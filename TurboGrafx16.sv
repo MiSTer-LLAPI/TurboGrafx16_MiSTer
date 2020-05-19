@@ -150,7 +150,7 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 assign LED_USER  = cart_download | bk_state | (status[23] & bk_pending);
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
-assign BUTTONS   = osd_btn;
+assign BUTTONS   = osd_btn | llapi_osd;
 
 assign VIDEO_ARX = status[1] ? 8'd16 : overscan ? 8'd4 : 8'd47;
 assign VIDEO_ARY = status[1] ? 8'd9  : overscan ? 8'd3 : 8'd37;
@@ -159,7 +159,7 @@ assign VIDEO_ARY = status[1] ? 8'd9  : overscan ? 8'd3 : 8'd37;
 // 0         1         2         3
 // 01234567890123456789012345678901
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXX
+// XXXXXXXXXXXXXXXXXXXXX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -185,10 +185,10 @@ parameter CONF_STR = {
 	"P1O8A,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"P1-;",
 	"P1OH,Overscan,Hidden,Visible;",
-	"P1OF,Border Color,Original,Black;",
+	"P1OI,Border Color,Original,Black;",
 	"H6P1OB,Sprites per line,Normal,Extra;",
 	"P1-;",
-	"P1OIJ,Audio Boost,No,2x,4x;",
+	"P1OJK,Audio Boost,No,2x,4x;",
 	"P2,Hardware;",
 	"P2-;",
 	"P2O3,ROM Data Swap,No,Yes;",
@@ -199,10 +199,10 @@ parameter CONF_STR = {
 	"D4H3P2O6,ROM Storage,DDR3,DDR3;",
 `endif
 	"P2-;",
-	"P2OE,Arcade Card,Disabled,Enabled;",
+	"P2OF,Arcade Card,Disabled,Enabled;",
 	"P2OP,CD Seek,Normal,Fast;",
 	"P2-;",
-	"P2OD,USER I/O,Off,SNAC;",
+	"P2ODE,USER I/O,Off,SNAC,LLAPI;",
 	"-;",
 	"H5O2,Turbo Tap,Disabled,Enabled;",
 	"H5O4,Controller,2 Buttons,6 Buttons;",
@@ -255,7 +255,7 @@ pll pll
 wire [31:0] status;
 wire  [1:0] buttons;
 
-wire [11:0] joy_0, joy_1, joy_2, joy_3, joy_4;
+wire [11:0] joystick_0, joystick_1, joystick_2, joystick_3, joystick_4;
 wire        ioctl_download;
 wire  [7:0] ioctl_index;
 wire        ioctl_wr;
@@ -318,11 +318,11 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	.img_readonly(img_readonly),
 	.img_size(img_size),
 
-	.joystick_0(joy_0),
-	.joystick_1(joy_1),
-	.joystick_2(joy_2),
-	.joystick_3(joy_3),
-	.joystick_4(joy_4),
+	.joystick_0(joystick_0),
+	.joystick_1(joystick_1),
+	.joystick_2(joystick_2),
+	.joystick_3(joystick_3),
+	.joystick_4(joystick_4),
 
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
@@ -387,7 +387,7 @@ pce_top #(LITE) pce_top
 	.JOY_IN(joy_in),
 
 	.CD_EN(cd_en),
-	.AC_EN(status[14]),
+	.AC_EN(status[15]),
 
 	.CD_RAM_A(cd_ram_a),
 	.CD_RAM_DO(cd_ram_do),
@@ -425,7 +425,7 @@ pce_top #(LITE) pce_top
 	.CPU_PAUSE_EN(CPU_PAUSE_EN),
 
 	.ReducedVBL(~overscan),
-	.BORDER_EN(~status[15]),
+	.BORDER_EN(~status[18]),
 	.VIDEO_R(r),
 	.VIDEO_G(g),
 	.VIDEO_B(b),
@@ -643,7 +643,7 @@ function [15:0] compr; input [15:0] inp;
 		v  = inp[15] ? (~inp) + 1'd1 : inp;
 		v1 = (v < comp_x1[15:0]) ? (v * comp_a1) : (((v - comp_x1[15:0])/comp_f1) + comp_b1[15:0]);
 		v2 = (v < comp_x2[15:0]) ? (v * comp_a2) : (((v - comp_x2[15:0])/comp_f2) + comp_b2[15:0]);
-		v  = status[19] ? v2 : v1;
+		v  = status[20] ? v2 : v1;
 		compr = inp[15] ? ~(v-1'd1) : v;
 	end
 endfunction
@@ -674,8 +674,8 @@ always @(posedge clk_sys) begin
 	cmp_r <= compr(audio_r[17:2]);
 end
 
-assign AUDIO_L = status[19:18] ? cmp_l : audio_l[17:2];
-assign AUDIO_R = status[19:18] ? cmp_r : audio_r[17:2];
+assign AUDIO_L = status[20:19] ? cmp_l : audio_l[17:2];
+assign AUDIO_R = status[20:19] ? cmp_r : audio_r[17:2];
 assign AUDIO_S = 1;
 assign AUDIO_MIX = 0;
 
@@ -770,6 +770,184 @@ always @(posedge clk_sys) begin
 	end
 end
 
+//////////////////   LLAPI   ///////////////////
+
+wire [31:0] llapi_buttons, llapi_buttons2;
+wire [71:0] llapi_analog, llapi_analog2;
+wire [7:0]  llapi_type, llapi_type2;
+wire llapi_en, llapi_en2;
+
+wire llapi_select = status[14];
+
+wire llapi_latch_o, llapi_latch_o2, llapi_data_o, llapi_data_o2;
+
+always_comb begin
+	USER_OUT = 6'b111111;
+	if (llapi_select) begin
+		USER_OUT[0] = llapi_latch_o;
+		USER_OUT[1] = llapi_data_o;
+		USER_OUT[2] = ~(llapi_select & ~OSD_STATUS);
+		USER_OUT[4] = llapi_latch_o2;
+		USER_OUT[5] = llapi_data_o2;
+	end else if (snac & ~OSD_STATUS) begin
+		USER_OUT = {2'b11, snac_clr, 1'b1, snac_sel, 2'b11};
+	end
+end
+
+LLAPI llapi
+(
+	.CLK_50M(CLK_50M),
+	.LLAPI_SYNC(VSync),
+	.IO_LATCH_IN(USER_IN[0]),
+	.IO_LATCH_OUT(llapi_latch_o),
+	.IO_DATA_IN(USER_IN[1]),
+	.IO_DATA_OUT(llapi_data_o),
+	.ENABLE(llapi_select & ~OSD_STATUS),
+	.LLAPI_BUTTONS(llapi_buttons),
+	.LLAPI_ANALOG(llapi_analog),
+	.LLAPI_TYPE(llapi_type),
+	.LLAPI_EN(llapi_en)
+);
+
+LLAPI llapi2
+(
+	.CLK_50M(CLK_50M),
+	.LLAPI_SYNC(VSync),
+	.IO_LATCH_IN(USER_IN[4]),
+	.IO_LATCH_OUT(llapi_latch_o2),
+	.IO_DATA_IN(USER_IN[5]),
+	.IO_DATA_OUT(llapi_data_o2),
+	.ENABLE(llapi_select & ~OSD_STATUS),
+	.LLAPI_BUTTONS(llapi_buttons2),
+	.LLAPI_ANALOG(llapi_analog2),
+	.LLAPI_TYPE(llapi_type2),
+	.LLAPI_EN(llapi_en2)
+);
+
+reg llapi_button_pressed, llapi_button_pressed2;
+
+always @(posedge CLK_50M) begin
+        if (reset) begin
+                llapi_button_pressed  <= 0;
+                llapi_button_pressed2 <= 0;
+	end else begin
+		if (|llapi_buttons)
+                	llapi_button_pressed  <= 1;
+        	if (|llapi_buttons2)
+                	llapi_button_pressed2 <= 1;
+	end
+end
+
+// controller id is 0 if there is either an Atari controller or no controller
+// if id is 0, assume there is no controller until a button is pressed
+wire use_llapi = llapi_en && llapi_select && (|llapi_type || llapi_button_pressed);
+wire use_llapi2 = llapi_en2 && llapi_select && (|llapi_type2 || llapi_button_pressed2);
+
+// Indexes:
+// 0 = D+    = P1 Latch
+// 1 = D-    = P1 Data
+// 2 = TX-   = LLAPI Enable
+// 3 = GND_d = N/C
+// 4 = RX+   = P2 Latch
+// 5 = RX-   = P2 Data
+
+wire [11:0] joy_ll_a;
+always_comb begin
+        // button layout for genesis controllers
+        if (llapi_type == 20 || llapi_type == 21) begin
+                joy_ll_a = {
+                        llapi_buttons[6],  llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[0], // VI, V, IV, III
+                        llapi_buttons[5],  llapi_buttons[4], // Run, Select
+                        llapi_buttons[1],  llapi_buttons[7], // II, I
+                        llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // d-pad
+                };
+        // button layout for tg16 controllers
+        end else if (llapi_type == 54 || llapi_type == 23) begin
+                joy_ll_a = {
+                        llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[8],  llapi_buttons[9], // VI, V, IV, III
+                        llapi_buttons[5],  llapi_buttons[4], // Run, Select
+                        llapi_buttons[0],  llapi_buttons[1], // II, I
+                        llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // d-pad
+                };
+        // saturn controller layout, same as genesis with select moved to RT
+        end else if (llapi_type == 8 || llapi_type == 3) begin
+                joy_ll_a = {
+                        llapi_buttons[6],  llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[0], // VI, V, IV, III
+                        llapi_buttons[5],  llapi_buttons[9], // Run, Select
+                        llapi_buttons[1],  llapi_buttons[7], // II, I
+                        llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // d-pad
+                };
+        end else begin
+                joy_ll_a = {
+                        llapi_buttons[7],  llapi_buttons[3],  llapi_buttons[6],  llapi_buttons[2], // VI, V, IV, III
+                        llapi_buttons[5],  llapi_buttons[4], // Run, Select
+                        llapi_buttons[0],  llapi_buttons[1], // II, I
+                        llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // d-pad
+                };
+        end
+end
+
+wire [11:0] joy_ll_b;
+always_comb begin
+        // button layout for genesis controllers
+        if (llapi_type2 == 20 || llapi_type2 == 21) begin
+                joy_ll_b = {
+                        llapi_buttons2[6],  llapi_buttons2[3],  llapi_buttons2[2],  llapi_buttons2[0], // VI, V, IV, III
+                        llapi_buttons2[5],  llapi_buttons2[4], // Run, Select
+                        llapi_buttons2[1],  llapi_buttons2[7], // II, I
+                        llapi_buttons2[27], llapi_buttons2[26], llapi_buttons2[25], llapi_buttons2[24] // d-pad
+                };
+        // button layout for tg16 controllers
+        end else if (llapi_type2 == 54 || llapi_type2 == 23) begin
+                joy_ll_b = {
+                        llapi_buttons2[3],  llapi_buttons2[2],  llapi_buttons2[8],  llapi_buttons2[9], // VI, V, IV, III
+                        llapi_buttons2[5],  llapi_buttons2[4], // Run, Select
+                        llapi_buttons2[0],  llapi_buttons2[1], // II, I
+                        llapi_buttons2[27], llapi_buttons2[26], llapi_buttons2[25], llapi_buttons2[24] // d-pad
+                };
+        // saturn controller layout, same as genesis with select moved to RT
+        end else if (llapi_type2 == 8 || llapi_type2 == 3) begin
+                joy_ll_b = {
+                        llapi_buttons2[6],  llapi_buttons2[3],  llapi_buttons2[2],  llapi_buttons2[0], // VI, V, IV, III
+                        llapi_buttons2[5],  llapi_buttons2[9], // Run, Select
+                        llapi_buttons2[1],  llapi_buttons2[7], // II, I
+                        llapi_buttons2[27], llapi_buttons2[26], llapi_buttons2[25], llapi_buttons2[24] // d-pad
+                };
+        end else begin
+                joy_ll_b = {
+                        llapi_buttons2[7],  llapi_buttons2[3],  llapi_buttons2[6],  llapi_buttons2[2], // VI, V, IV, III
+                        llapi_buttons2[5],  llapi_buttons2[4], // Run, Select
+                        llapi_buttons2[0],  llapi_buttons2[1], // II, I
+                        llapi_buttons2[27], llapi_buttons2[26], llapi_buttons2[25], llapi_buttons2[24] // d-pad
+                };
+        end
+end
+
+wire llapi_osd = (llapi_buttons[26] & llapi_buttons[5] & llapi_buttons[0]) || (llapi_buttons2[26] & llapi_buttons2[5] & llapi_buttons2[0]);
+
+// if LLAPI is enabled, shift USB controllers over to the next available player slot
+wire [11:0] joy_0, joy_1, joy_2, joy_3, joy_4;
+always_comb begin
+        if (use_llapi & use_llapi2) begin
+                joy_0 = joy_ll_a;
+                joy_1 = joy_ll_b;
+                joy_2 = joystick_0;
+                joy_3 = joystick_1;
+                joy_4 = joystick_2;
+        end else if (use_llapi ^ use_llapi2) begin
+                joy_0 = use_llapi  ? joy_ll_a : joystick_0;
+                joy_1 = use_llapi2 ? joy_ll_b : joystick_0;
+                joy_2 = joystick_1;
+                joy_3 = joystick_2;
+                joy_4 = joystick_3;
+        end else begin
+                joy_0 = joystick_0;
+                joy_1 = joystick_1;
+                joy_2 = joystick_2;
+                joy_3 = joystick_3;
+                joy_4 = joystick_4;
+        end
+end
 
 ////////////////////////////  CODES  ///////////////////////////////////
 
@@ -905,9 +1083,6 @@ end
 
 wire [1:0] joy_out;
 wire [3:0] joy_in = snac ? snac_dat : joy_latch;
-
-assign USER_OUT = snac ? {2'b11, snac_clr, 1'b1, snac_sel, 2'b11} : '1;
-
 
 /////////////////////////  STATE SAVE/LOAD  /////////////////////////////
 
