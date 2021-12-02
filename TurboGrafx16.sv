@@ -1045,7 +1045,7 @@ always_comb begin
         // button layout for tg16 controllers
         end else if (llapi_type == 54 || llapi_type == 23) begin
                 joy_ll_a = {
-                        llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[6],  llapi_buttons[7], // V, III, IV, VI
+                        llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[6],  llapi_buttons[7], // VI, V, IV, III
                         llapi_buttons[5],  llapi_buttons[4], // Run, Select
                         llapi_buttons[0],  llapi_buttons[1], // II, I
                         llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // d-pad
@@ -1081,7 +1081,7 @@ always_comb begin
         // button layout for tg16 controllers
         end else if (llapi_type2 == 54 || llapi_type2 == 23) begin
                 joy_ll_b = {
-                        llapi_buttons2[3],  llapi_buttons2[2],  llapi_buttons2[6],  llapi_buttons2[7], // V, III, IV, VI
+                        llapi_buttons2[3],  llapi_buttons2[2],  llapi_buttons2[6],  llapi_buttons2[7], // VI, V, IV, III
                         llapi_buttons2[5],  llapi_buttons2[4], // Run, Select
                         llapi_buttons2[0],  llapi_buttons2[1], // II, I
                         llapi_buttons2[27], llapi_buttons2[26], llapi_buttons2[25], llapi_buttons2[24] // d-pad
