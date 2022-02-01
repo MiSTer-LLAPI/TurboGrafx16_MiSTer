@@ -67,6 +67,12 @@ signal RAM_DI	: std_logic_vector(8 downto 0);
 signal RAM_WE	: std_logic := '0';
 signal RAM_DO	: std_logic_vector(8 downto 0);
 
+-- CPU conflict color latching
+signal R_FF	: std_logic_vector(2 downto 0);
+signal G_FF	: std_logic_vector(2 downto 0);
+signal B_FF	: std_logic_vector(2 downto 0);
+signal CE_N_FF : std_logic := '1';
+
 -- Color RAM Output
 signal COLOR	: std_logic_vector(8 downto 0);
 
@@ -103,7 +109,7 @@ TOP_BL_LINES <= TOP_BL_LINES_E when RVBL = '1' else TOP_BL_LINES_E+4;
 DISP_LINES   <= DISP_LINES_E   when RVBL = '1' else DISP_LINES_E-11;
 
 -- Color RAM
-ram : entity work.dpram generic map (9,9)
+ram : entity work.dpram generic map (addr_width => 9, data_width => 9, mem_init_file =>"huc6260_palette_init.mif")
 port map(
 	clock			=> CLK,
 
@@ -311,6 +317,22 @@ begin
 				G <= (others => '0');
 				R <= (others => '0');
 				B <= (others => '0');
+				G_FF <= (others => '0');
+				R_FF <= (others => '0');
+				B_FF <= (others => '0');
+				CE_N_FF  <= '1';
+
+			elsif (CE_N = '0') then
+				G <= G_FF;
+				R <= R_FF;
+				B <= B_FF;
+				CE_N_FF <= '0';
+			elsif (CE_N_FF = '0') then
+				G <= G_FF;
+				R <= R_FF;
+				B <= B_FF;
+				CE_N_FF <= '1';
+
 			elsif (GRID(0) = '1' and GRID_EN(0) = '1') or (GRID(1) = '1' and GRID_EN(1) = '1') then
 				G <= (others => '1');
 				R <= (others => '1');
@@ -319,6 +341,9 @@ begin
 				G <= COLOR(8 downto 6);
 				R <= COLOR(5 downto 3);
 				B <= COLOR(2 downto 0);
+				G_FF <= COLOR(8 downto 6);
+				R_FF <= COLOR(5 downto 3);
+				B_FF <= COLOR(2 downto 0);
 			end if;
 		end if;
 	end if;
