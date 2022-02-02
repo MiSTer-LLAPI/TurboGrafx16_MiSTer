@@ -18,6 +18,8 @@
 //  with this program; if not, write to the Free Software Foundation, Inc.,
 //  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //============================================================================
+//LLAPI: llapi.sv needs to be in rtl folder and needs to be declared in file.qip (set_global_assignment -name SYSTEMVERILOG_FILE rtl/llapi.sv)
+
 
 module emu
 (
@@ -191,7 +193,10 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 assign LED_USER  = cart_download | bk_state | bk_pending;
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
+//LLAPI: OSD combinaison
 assign BUTTONS   = osd_btn | llapi_osd;
+//LLAPI
+
 assign VGA_SCALER= 0;
 assign HDMI_FREEZE = 0;
 
@@ -274,7 +279,11 @@ parameter CONF_STR = {
 	"P2OE,Arcade Card,Disabled,Enabled;",
 	"P2O1,CD Seek,Normal,Fast;",
 	"P2-;",
+	//LLAPI: OSD menu item. swapped NONE with LLAPI. To detect LLAPI, status[31] = 1.
+	//LLAPI: Always double check witht the bits map allocation table to avoid conflicts	
 	"P2OUV,USER I/O,Off,SNAC,LLAPI;",
+	//LLAPI
+
 	"H5P2OL,MB128,Disabled,Enabled;",
 	"P2-;",
 	"D0P2RC,Format Backup RAM;",
@@ -330,7 +339,9 @@ pll pll
 wire [63:0] status;
 wire  [1:0] buttons;
 
-wire [11:0] joystick_0, joystick_1, joystick_2, joystick_3, joystick_4;
+//LLAPI: Distinguish hps_io (usb) josticks from llapi joysticks
+wire [11:0] joy_usb_0, joy_usb_1, joy_usb_2, joy_usb_3, joy_usb_4;
+//LLAPI
 wire [15:0] joy_a;
 wire  [7:0] pd_0;
 
@@ -394,13 +405,14 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.img_mounted(img_mounted),
 	.img_readonly(img_readonly),
 	.img_size(img_size),
-
-	.joystick_0(joystick_0),
-	.joystick_1(joystick_1),
-	.joystick_2(joystick_2),
-	.joystick_3(joystick_3),
-	.joystick_4(joystick_4),
-	.joystick_analog_0(joy_a),
+	//LLAPI : renamed hps_io (usb) joysticks
+	.joystick_0(joy_usb_0),
+	.joystick_1(joy_usb_1),
+	.joystick_2(joy_usb_2),
+	.joystick_3(joy_usb_3),
+	.joystick_4(joy_usb_4),
+	//LLAPI
+	.joystick_l_analog_0(joy_a),
 
 	.paddle_0(pd_0),
 
@@ -962,19 +974,21 @@ wire llapi_select = status[31];
 
 wire llapi_latch_o, llapi_latch_o2, llapi_data_o, llapi_data_o2;
 
+//Connection to USER_OUT port
 always_comb begin
 	USER_OUT = 6'b111111;
 	if (llapi_select) begin
 		USER_OUT[0] = llapi_latch_o;
 		USER_OUT[1] = llapi_data_o;
-		USER_OUT[2] = ~(llapi_select & ~OSD_STATUS);
+		USER_OUT[2] = ~(llapi_select & ~OSD_STATUS); // Blister LED
 		USER_OUT[4] = llapi_latch_o2;
 		USER_OUT[5] = llapi_data_o2;
 	end else if (snac & ~OSD_STATUS) begin
-		USER_OUT = {2'b11, snac_clr, 1'b1, snac_sel, 2'b11};
+		USER_OUT = {2'b11, snac_clr, 1'b1, snac_sel, 2'b11}; //conf for SNAC support
 	end
 end
 
+//Port 1 conf
 LLAPI llapi
 (
 	.CLK_50M(CLK_50M),
@@ -990,6 +1004,7 @@ LLAPI llapi
 	.LLAPI_EN(llapi_en)
 );
 
+//Port 2 conf
 LLAPI llapi2
 (
 	.CLK_50M(CLK_50M),
@@ -1033,21 +1048,28 @@ wire use_llapi2 = llapi_en2 && llapi_select && ((|llapi_type2 && ~(&llapi_type2)
 // 4 = RX+   = P2 Latch
 // 5 = RX-   = P2 Data
 
+
+//Controller string provided by core for reference (order is important)
+//Controller specific mapping based on type. More info here : https://docs.google.com/document/d/12XpxrmKYx_jgfEPyw-O2zex1kTQZZ-NSBdLO2RQPRzM/edit
+//llapi_Buttons id are HID id - 1
+
+//Port 1 mapping
+
 wire [11:0] joy_ll_a;
 always_comb begin
         // button layout for genesis controllers
         if (llapi_type == 20 || llapi_type == 21) begin
                 joy_ll_a = {
                         llapi_buttons[6],  llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[0], // VI, V, IV, III
-                        llapi_buttons[5],  llapi_buttons[4], // Run, Select
+						llapi_buttons[5],  llapi_buttons[4], // Run, Select
                         llapi_buttons[1],  llapi_buttons[7], // II, I
                         llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // d-pad
                 };
         // button layout for tg16 controllers
         end else if (llapi_type == 54 || llapi_type == 23) begin
                 joy_ll_a = {
-                        llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[8],  llapi_buttons[9], // VI, V, IV, III
-                        llapi_buttons[5],  llapi_buttons[4], // Run, Select
+                        llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[6],  llapi_buttons[7], // VI, V, IV, III
+								llapi_buttons[5],  llapi_buttons[4], // Run, Select
                         llapi_buttons[0],  llapi_buttons[1], // II, I
                         llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // d-pad
                 };
@@ -1069,20 +1091,22 @@ always_comb begin
         end
 end
 
+//Port 2 mapping
+
 wire [11:0] joy_ll_b;
 always_comb begin
         // button layout for genesis controllers
         if (llapi_type2 == 20 || llapi_type2 == 21) begin
                 joy_ll_b = {
                         llapi_buttons2[6],  llapi_buttons2[3],  llapi_buttons2[2],  llapi_buttons2[0], // VI, V, IV, III
-                        llapi_buttons2[5],  llapi_buttons2[4], // Run, Select
+						llapi_buttons2[5],  llapi_buttons2[4], // Run, Select
                         llapi_buttons2[1],  llapi_buttons2[7], // II, I
                         llapi_buttons2[27], llapi_buttons2[26], llapi_buttons2[25], llapi_buttons2[24] // d-pad
                 };
         // button layout for tg16 controllers
         end else if (llapi_type2 == 54 || llapi_type2 == 23) begin
                 joy_ll_b = {
-                        llapi_buttons2[3],  llapi_buttons2[2],  llapi_buttons2[8],  llapi_buttons2[9], // VI, V, IV, III
+                        llapi_buttons2[3],  llapi_buttons2[2],  llapi_buttons2[6],  llapi_buttons2[7], // VI, V, IV, III
                         llapi_buttons2[5],  llapi_buttons2[4], // Run, Select
                         llapi_buttons2[0],  llapi_buttons2[1], // II, I
                         llapi_buttons2[27], llapi_buttons2[26], llapi_buttons2[25], llapi_buttons2[24] // d-pad
@@ -1105,6 +1129,8 @@ always_comb begin
         end
 end
 
+//Assign (DOWN + FIRST BUTTON) Combinaison to bring the OSD up - P1 and P1 ports.
+//TODO : Support long press detection
 wire llapi_osd = (llapi_buttons[26] & llapi_buttons[5] & llapi_buttons[0]) || (llapi_buttons2[26] & llapi_buttons2[5] & llapi_buttons2[0]);
 
 // if LLAPI is enabled, shift USB controllers over to the next available player slot
@@ -1113,21 +1139,21 @@ always_comb begin
         if (use_llapi & use_llapi2) begin
                 joy_0 = joy_ll_a;
                 joy_1 = joy_ll_b;
-                joy_2 = joystick_0;
-                joy_3 = joystick_1;
-                joy_4 = joystick_2;
+                joy_2 = joy_usb_0;
+                joy_3 = joy_usb_1;
+                joy_4 = joy_usb_2;
         end else if (use_llapi ^ use_llapi2) begin
-                joy_0 = use_llapi  ? joy_ll_a : joystick_0;
-                joy_1 = use_llapi2 ? joy_ll_b : joystick_0;
-                joy_2 = joystick_1;
-                joy_3 = joystick_2;
-                joy_4 = joystick_3;
+                joy_0 = use_llapi  ? joy_ll_a : joy_usb_0;
+                joy_1 = use_llapi2 ? joy_ll_b : joy_usb_0;
+                joy_2 = joy_usb_1;
+                joy_3 = joy_usb_2;
+                joy_4 = joy_usb_3;
         end else begin
-                joy_0 = joystick_0;
-                joy_1 = joystick_1;
-                joy_2 = joystick_2;
-                joy_3 = joystick_3;
-                joy_4 = joystick_4;
+                joy_0 = joy_usb_0;
+                joy_1 = joy_usb_1;
+                joy_2 = joy_usb_2;
+                joy_3 = joy_usb_3;
+                joy_4 = joy_usb_4;
         end
 end
 
