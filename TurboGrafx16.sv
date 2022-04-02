@@ -31,7 +31,7 @@ module emu
 	input         RESET,
 
 	//Must be passed to hps_io module
-	inout  [47:0] HPS_BUS,
+	inout  [48:0] HPS_BUS,
 
 	//Base video clock. Usually equals to CLK_SYS.
 	output        CLK_VIDEO,
@@ -240,7 +240,7 @@ parameter CONF_STR = {
 	"F3,TGP,Load Palette;",
 	"-;",
 `endif
-	"S0,CUE,Insert CD;",
+	"S0,CUECHD,Insert CD;",
 	"-;",
 	"C,Cheats;",
 	"H1O5,Cheats enabled,ON,OFF;",
