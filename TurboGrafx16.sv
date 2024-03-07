@@ -54,13 +54,14 @@ module emu
 	output        VGA_F1,
 	output [1:0]  VGA_SL,
 	output        VGA_SCALER, // Force VGA scaler
+	output        VGA_DISABLE, // analog out is off
 
 	input  [11:0] HDMI_WIDTH,
 	input  [11:0] HDMI_HEIGHT,
 	output        HDMI_FREEZE,
 
 `ifdef MISTER_FB
-	// Use framebuffer in DDRAM (USE_FB=1 in qsf)
+	// Use framebuffer in DDRAM
 	// FB_FORMAT:
 	//    [2:0] : 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp
 	//    [3]   : 0=16bits 565 1=16bits 1555
@@ -198,6 +199,7 @@ assign BUTTONS   = osd_btn | llapi_osd;
 //LLAPI
 
 assign VGA_SCALER= 0;
+assign VGA_DISABLE = 0;
 assign HDMI_FREEZE = 0;
 
 wire [1:0] ar = status[25:24];
@@ -226,7 +228,7 @@ video_freak video_freak
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXXX XXXXXX XX XXXXXXX
+// XXXX XXXXXXXXXXXXXXXXXXXXXXXXXX  XXXXXXX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -289,8 +291,8 @@ parameter CONF_STR = {
 	"D0P2RC,Format Backup RAM;",
 	"-;",
 	"H5O2,Turbo Tap,Disabled,Enabled;",
-	"H5O4,Controller,2 Buttons,6 Buttons;",
-	"H5OQR,Special,None,Mouse,Pachinko;",
+	"H5OTU,Controller,2 Buttons,2 Turbo,6 Buttons;",
+	"H5OQR,Special,None,Mouse,Pachinko,XE-1AP;",
 	"H5-;",
 	"R0,Reset;",
 	"J1,Button I,Button II,Select,Run,Button III,Button IV,Button V,Button VI;",
@@ -342,7 +344,8 @@ wire  [1:0] buttons;
 //LLAPI: Distinguish hps_io (usb) josticks from llapi joysticks
 wire [11:0] joy_usb_0, joy_usb_1, joy_usb_2, joy_usb_3, joy_usb_4;
 //LLAPI
-wire [15:0] joy_a;
+wire [15:0] joy_a, joy_b;
+
 wire  [7:0] pd_0;
 
 wire        ioctl_download;
@@ -413,7 +416,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.joystick_4(joy_usb_4),
 	//LLAPI
 	.joystick_l_analog_0(joy_a),
-
+	.joystick_r_analog_0(joy_b),
 	.paddle_0(pd_0),
 
 	.ps2_key(ps2_key),
@@ -1194,11 +1197,15 @@ end
 wire [15:0] joy_data;
 always_comb begin
 	case (joy_port)
-		0: joy_data = status[26] ? {mouse_data, mouse_data} : ~{4'hF, joy_0[11:8], joy_0[1], joy_0[2], joy_0[0], joy_0[3], joy_0[7:4]};
-		1: joy_data = status[27] ? pachinko                 : ~{4'hF, joy_1[11:8], joy_1[1], joy_1[2], joy_1[0], joy_1[3], joy_1[7:4]};
-		2: joy_data = ~{4'hF, joy_2[11:8], joy_2[1], joy_2[2], joy_2[0], joy_2[3], joy_2[7:4]};
-		3: joy_data = ~{4'hF, joy_3[11:8], joy_3[1], joy_3[2], joy_3[0], joy_3[3], joy_3[7:4]};
-		4: joy_data = ~{4'hF, joy_4[11:8], joy_4[1], joy_4[2], joy_4[0], joy_4[3], joy_4[7:4]};
+		0: joy_data = (status[27:26] == 2'b01) ? {mouse_data, mouse_data} :
+						  (status[27:26] == 2'b11) ? {xe1_data[2], xe1_data[1], xe1_data[3], xe1_data[0], xe1_runbtn, xe1_selbtn, xe1_trg2, xe1_trg1,
+																xe1_data[2], xe1_data[1], xe1_data[3], xe1_data[0], xe1_runbtn, xe1_selbtn, xe1_trg2, xe1_trg1} :
+						                            ~{4'hF, joy_0[11:8], joy_0[1], joy_0[2], joy_0[0], joy_0[3], joy_0[7:6], (status[30:29] == 2'b01) ? joyrept_0[1:0] : joy_0[5:4]};
+															  
+		1: joy_data = (status[27:26] == 2'b10) ? pachinko                 : ~{4'hF, joy_1[11:8], joy_1[1], joy_1[2], joy_1[0], joy_1[3], joy_1[7:6], (status[30:29] == 2'b01) ? joyrept_1[1:0] : joy_1[5:4]};
+		2: joy_data = ~{4'hF, joy_2[11:8], joy_2[1], joy_2[2], joy_2[0], joy_2[3], joy_2[7:6], (status[30:29] == 2'b01) ? joyrept_2[1:0] : joy_2[5:4]};
+		3: joy_data = ~{4'hF, joy_3[11:8], joy_3[1], joy_3[2], joy_3[0], joy_3[3], joy_3[7:6], (status[30:29] == 2'b01) ? joyrept_3[1:0] : joy_3[5:4]};
+		4: joy_data = ~{4'hF, joy_4[11:8], joy_4[1], joy_4[2], joy_4[0], joy_4[3], joy_4[7:6], (status[30:29] == 2'b01) ? joyrept_4[1:0] : joy_4[5:4]};
 		default: joy_data = 16'h0FFF;
 	endcase
 end
@@ -1241,6 +1248,12 @@ end
 
 reg [3:0] joy_latch;
 reg [2:0] joy_port;
+reg [3:0] scan_counter = 0;
+reg [1:0] joyrept_0;
+reg [1:0] joyrept_1;
+reg [1:0] joyrept_2;
+reg [1:0] joyrept_3;
+reg [1:0] joyrept_4;
 reg [1:0] mouse_cnt;
 reg [7:0] ms_x, ms_y;
 
@@ -1260,6 +1273,24 @@ always @(posedge clk_sys) begin : input_block
 
 	if(&mouse_to) mouse_cnt <= 3;
 	if(~last_gp[1] & joy_out[1]) begin
+	
+  		scan_counter <= scan_counter + 1;
+		joyrept_0[0] <= (joy_0[8] & scan_counter[2]) | (joy_0[10] & scan_counter[1]) | joy_0[4];
+		joyrept_0[1] <= (joy_0[9] & scan_counter[2]) | (joy_0[11] & scan_counter[1]) | joy_0[5];
+		
+		joyrept_1[0] <= (joy_1[8] & scan_counter[2]) | (joy_1[10] & scan_counter[1]) | joy_1[4];
+		joyrept_1[1] <= (joy_1[9] & scan_counter[2]) | (joy_1[11] & scan_counter[1]) | joy_1[5];
+		
+		joyrept_2[0] <= (joy_2[8] & scan_counter[2]) | (joy_2[10] & scan_counter[1]) | joy_2[4];
+		joyrept_2[1] <= (joy_2[9] & scan_counter[2]) | (joy_2[11] & scan_counter[1]) | joy_2[5];
+		
+		joyrept_3[0] <= (joy_3[8] & scan_counter[2]) | (joy_3[10] & scan_counter[1]) | joy_3[4];
+		joyrept_3[1] <= (joy_3[9] & scan_counter[2]) | (joy_3[11] & scan_counter[1]) | joy_3[5];
+		
+		joyrept_4[0] <= (joy_4[8] & scan_counter[2]) | (joy_4[10] & scan_counter[1]) | joy_4[4];
+		joyrept_4[1] <= (joy_4[9] & scan_counter[2]) | (joy_4[11] & scan_counter[1]) | joy_4[5];
+		
+
 		mouse_cnt <= mouse_cnt + 1'd1;
 		if(&mouse_cnt) begin
 			ms_x  <= msr_x;
@@ -1277,10 +1308,12 @@ always @(posedge clk_sys) begin : input_block
 
 	if (joy_out[1]) begin
 		joy_port  <= 0;
-		joy_latch <= 0;
-		if (~last_gp[1]) high_buttons <= ~high_buttons && status[4];
+		if (status[27:26] != 2'b11) begin
+			joy_latch <= 0;
+			if (~last_gp[1] && (status[30:29] == 2'b10)) high_buttons <= ~high_buttons;
+		end
 	end
-	else if (joy_out[0] && ~last_gp[0] && (status[2] | status[27])) begin
+	else if (joy_out[0] && ~last_gp[0] && (status[2] | status[27]) && (status[27:26] != 2'b11)) begin	// suppress if XE-1AP
 		joy_port <= joy_port + 3'd1;
 	end
 end
@@ -1315,6 +1348,36 @@ end
 
 wire [1:0] joy_out;
 wire [3:0] joy_in = snac ? snac_dat : (mb128_ena & mb128_Active) ? mb128_Data : joy_latch;
+
+
+assign USER_OUT = snac ? {2'b11, snac_clr, 1'b1, snac_sel, 2'b11} : '1;
+
+wire xe1_trg1;
+wire xe1_trg2;
+wire xe1_runbtn;
+wire xe1_selbtn;
+wire [3:0] xe1_data;
+
+XE1AP #(43) XE1AP		// 43 clock cycles per microsecond
+(
+	.reset(reset|cart_download),
+	.clk_sys(clk_sys),
+
+   .joystick_0(joy_0),
+   .joystick_l_analog_0(joy_a),
+   .joystick_r_analog_0(joy_b),
+   .req(joy_out[1]),			// signal requesting response from XE-1AP (on return to high)
+									// pin 8 on original 9-pin connector 
+   .trg1(xe1_trg1),			// pin 6 on original 9-pin connector
+   .trg2(xe1_trg2),			// pin 7 on original 9-pin connector
+   .data(xe1_data),			// Data[3] = pin 4 on original 9-pin connector
+									// Data[2] = pin 3 on original 9-pin connector
+									// Data[1] = pin 2 on original 9-pin connector
+									// Data[0] = pin 1 on original 9-pin connector
+   .run_btn(xe1_runbtn),	// need to send back for the XHE-3 PC Engine attachment
+   .select_btn(xe1_selbtn)	// need to send back for the XHE-3 PC Engine attachment
+
+);
 
 /////////////////////////  BACKUP RAM SAVE/LOAD  /////////////////////////////
 
