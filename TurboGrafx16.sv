@@ -244,6 +244,12 @@ parameter CONF_STR = {
 `endif
 	"S0,CUECHD,Insert CD;",
 	"-;",
+	//LLAPI: OSD menu item
+	//LLAPI Always ON
+	"-,<< LLAPI enabled >>;",
+	"-,<< Use USER I/O port >>;",
+	"-;",
+	//END LLAPI	
 	"C,Cheats;",
 	"H1O5,Cheats enabled,ON,OFF;",
 	"-;",
@@ -281,9 +287,8 @@ parameter CONF_STR = {
 	"P2OE,Arcade Card,Disabled,Enabled;",
 	"P2O1,CD Seek,Normal,Fast;",
 	"P2-;",
-	//LLAPI: OSD menu item. swapped NONE with LLAPI. To detect LLAPI, status[31] = 1.
-	//LLAPI: Always double check witht the bits map allocation table to avoid conflicts	
-	"P2OUV,USER I/O,Off,SNAC,LLAPI;",
+	//LLAPI: Disable SNAC
+	//"P2OUV,USER I/O,Off,SNAC,LLAPI;",
 	//LLAPI
 
 	"H5P2OL,MB128,Disabled,Enabled;",
@@ -973,7 +978,7 @@ wire [71:0] llapi_analog, llapi_analog2;
 wire [7:0]  llapi_type, llapi_type2;
 wire llapi_en, llapi_en2;
 
-wire llapi_select = status[31];
+wire llapi_select = 1'b1;
 
 wire llapi_latch_o, llapi_latch_o2, llapi_data_o, llapi_data_o2;
 
@@ -1349,8 +1354,8 @@ end
 wire [1:0] joy_out;
 wire [3:0] joy_in = snac ? snac_dat : (mb128_ena & mb128_Active) ? mb128_Data : joy_latch;
 
-
-assign USER_OUT = snac ? {2'b11, snac_clr, 1'b1, snac_sel, 2'b11} : '1;
+//LLAPI Disable SNAC
+//assign USER_OUT = snac ? {2'b11, snac_clr, 1'b1, snac_sel, 2'b11} : '1;
 
 wire xe1_trg1;
 wire xe1_trg2;
