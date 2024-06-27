@@ -228,7 +228,7 @@ video_freak video_freak
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXX XXXXXXXXXXXXXXXXXXXXXXXXXX  XXXXXXX
+// XXXX XXXXXXXXXXXXXXXXXXXXXXXXXX  XXXXXXX						  XX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -248,6 +248,7 @@ parameter CONF_STR = {
 	//LLAPI Always ON
 	"-,<< LLAPI enabled >>;",
 	"-,<< Use USER I/O port >>;",
+	"oUV,LLAPI Remap (III) btn ,OFF,START,SELECT;",
 	"-;",
 	//END LLAPI	
 	"C,Cheats;",
@@ -1074,14 +1075,30 @@ always_comb begin
                         llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // d-pad
                 };
         // button layout for tg16 controllers
-        end else if (llapi_type == 54 || llapi_type == 23) begin
+        end else if ((llapi_type == 54 || llapi_type == 23) & ~status[62] & ~status[63]) begin
                 joy_ll_a = {
                         llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[6],  llapi_buttons[7], // VI, V, IV, III
-								llapi_buttons[5],  llapi_buttons[4], // Run, Select
+						llapi_buttons[5],  llapi_buttons[4], // Run, Select
                         llapi_buttons[0],  llapi_buttons[1], // II, I
                         llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // d-pad
                 };
-        // saturn controller layout, same as genesis with select moved to RT
+        // button layout for tg16 controllers : Remapped III to START
+        end else if ((llapi_type == 54 || llapi_type == 23) & status[62] & ~status[63]) begin
+                joy_ll_a = {
+                        llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[6],  1'b0, // VI, V, IV, III
+						llapi_buttons[7],  llapi_buttons[4], // Run, Select
+                        llapi_buttons[0],  llapi_buttons[1], // II, I
+                        llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // d-pad
+                };
+				   // button layout for tg16 controllers  : Remapped III to SELECT
+        end else if ((llapi_type == 54 || llapi_type == 23) & ~status[62] & status[63]) begin
+                joy_ll_a = {
+                        llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[6],  1'b0, // VI, V, IV, III
+						llapi_buttons[5],  llapi_buttons[7], // Run, Select
+                        llapi_buttons[0],  llapi_buttons[1], // II, I
+                        llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // d-pad
+                };
+		// saturn controller layout, same as genesis with select moved to RT
         end else if (llapi_type == 8 || llapi_type == 3) begin
                 joy_ll_a = {
                         llapi_buttons[6],  llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[0], // VI, V, IV, III
@@ -1323,7 +1340,8 @@ always @(posedge clk_sys) begin : input_block
 	end
 end
 
-wire snac = status[30];
+//LLAPI Disable SNAC
+wire snac = 1'b0;
 
 // Index Name    HDMI System
 // 0   = D+    = 2  = d1/right/2
